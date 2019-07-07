@@ -4,6 +4,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::collections::HashMap;
 use multi_map::MultiMap;
 use std::*;
+use getopts::Options;
 
 struct TcpConnection {
     src: TcpStream,
@@ -15,7 +16,7 @@ struct UdpConnection {
     addr: SocketAddr,
 }
 
-fn get_ipv4_socket_addr(input :&str) -> Result<SocketAddr, io::Error> {
+fn get_ipv4_socket_addr(input :&String) -> Result<SocketAddr, io::Error> {
     let addrs_iter = input.to_socket_addrs()?;
     for addr in addrs_iter {
         if addr.is_ipv4() { return Ok(addr); }
@@ -107,9 +108,30 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
     }
 }
 
+fn print_usage(program: &str, opts: Options) {
+    let brief = format!("Usage: {} [options]", program);
+    print!("{}", opts.usage(&brief));
+}
 fn main() -> Result<(), std::io::Error> {
-    let src = get_ipv4_socket_addr("0.0.0.0:1815")?;
-    let dst = get_ipv4_socket_addr("127.0.0.1:2815")?;
+    let args: Vec<String> = env::args().collect();
+    let program = args[0].clone();
+
+    let mut opts = Options::new();
+    opts.optopt("s", "src", "where to listen on (default 0.0.0.0:815", "HOST:PORT");
+    opts.optopt("d", "dst", "where to forward to (default zm.tolao.de:815", "HOST:PORT");
+    opts.optflag("h", "help", "print this help");
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => { m }
+        Err(f) => { panic!(f.to_string()) }
+    };
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        return Ok(());
+    }
+    let src_str = matches.opt_str("src").unwrap_or("0.0.0.0:1815".to_string());
+    let dst_str = matches.opt_str("dst").unwrap_or("127.0.0.1:2815".to_string());
+    let src = get_ipv4_socket_addr(&src_str)?;
+    let dst = get_ipv4_socket_addr(&dst_str)?;
 
     forward(src, dst)
 }
