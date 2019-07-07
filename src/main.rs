@@ -33,11 +33,11 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
 
     let poll = Poll::new()?;
 
-    let tcp_server = TcpListener::bind(&src)?;
+    let tcp_server = TcpListener::bind(&src).unwrap();
     poll.register(&tcp_server, TCP_SERVER, Ready::readable(),
                   PollOpt::edge())?;
 
-    let udp_server = UdpSocket::bind(&src)?;
+    let udp_server = UdpSocket::bind(&src).unwrap();
     poll.register(&udp_server, UDP_SERVER, Ready::readable(),
                   PollOpt::edge())?;
 
@@ -52,11 +52,11 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
         for event in events.iter() {
             match event.token() {
                 TCP_SERVER => {
-                    let (stream1, _) = tcp_server.accept().unwrap();
+                    let (stream1, _) = tcp_server.accept()?;
                     poll.register(&stream1, Token(next_token), Ready::readable(),
                                   PollOpt::edge())?;
                     next_token += 1;
-                    let stream2 = TcpStream::connect(&dst).unwrap();
+                    let stream2 = TcpStream::connect(&dst)?;
                     poll.register(&stream2, Token(next_token), Ready::readable(),
                                   PollOpt::edge())?;
                     next_token += 1;
@@ -70,7 +70,7 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     if let Ok((len, from)) = udp_server.recv_from(&mut buf) {
                         if !udp_conns.contains_key_alt(&from) {
                             let addr = "0.0.0.0:0".parse().unwrap();
-                            let dst_sock = UdpSocket::bind(&addr).unwrap();
+                            let dst_sock = UdpSocket::bind(&addr)?;
 
                             poll.register(&dst_sock, Token(next_token), Ready::readable(),
                                           PollOpt::edge())?;
@@ -81,7 +81,7 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
 
                         if let Some(dst_conn) = udp_conns.get_alt(&from) {
                             let dst_sock = &dst_conn.src;
-                            dst_sock.send_to(&buf[..len], &dst).unwrap();
+                            dst_sock.send_to(&buf[..len], &dst)?;
                         }
                     }
                 }
@@ -93,13 +93,13 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                         if len > 0 {
                             if let Some(d) = tcp_conns.get(&c.dst_id) {
                                 let d_buffers: [&IoVec; 1] = [buf[..len].into()];
-                                d.src.write_bufs(&d_buffers).unwrap();
+                                d.src.write_bufs(&d_buffers)?;
                             }
                         }
                     }
                     if let Some(c) = udp_conns.get(&port) {
                         if let Ok((len, _)) = c.src.recv_from(&mut buf) {
-                            udp_server.send_to(&buf[..len], &c.addr).unwrap();
+                            udp_server.send_to(&buf[..len], &c.addr)?;
                         }
                     }
                 },
@@ -133,5 +133,9 @@ fn main() -> Result<(), std::io::Error> {
     let src = get_ipv4_socket_addr(&src_str)?;
     let dst = get_ipv4_socket_addr(&dst_str)?;
 
-    forward(src, dst)
+    loop {
+        if let Err(e) = forward(src, dst) {
+            println!("Forwarding failed: {}", e);
+        }
+    }
 }
