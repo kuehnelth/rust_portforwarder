@@ -21,11 +21,10 @@ fn main() {
     let mut tcp_conns = HashMap::with_capacity(32);
     let mut udp_conns = MultiMap::with_capacity(32);
 
-
     let poll = Poll::new().unwrap();
 
     let addr = "0.0.0.0:1815".parse().unwrap();
-    let addr2 = "94.16.122.161:1815".parse().unwrap();
+    let addr2 = "127.0.0.1:2815".parse().unwrap();
 
     let tcp_server = TcpListener::bind(&addr).unwrap();
     poll.register(&tcp_server, TCP_SERVER, Ready::readable(),
@@ -46,8 +45,6 @@ fn main() {
         for event in events.iter() {
             match event.token() {
                 TCP_SERVER => {
-                    // Accept and drop the socket immediately, this will close
-                    // the socket and notify the client of the EOF.
                     let (stream1, _) = tcp_server.accept().unwrap();
                     poll.register(&stream1, Token(next_token), Ready::readable(),
                                   PollOpt::edge()).unwrap();
@@ -85,10 +82,9 @@ fn main() {
                     if let Some(c) = tcp_conns.get(&port) {
                         let buffer_ref: &mut [u8] = &mut buf;
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
-                        let len = c.src.read_bufs(&mut buffers).unwrap();
+                        let len = c.src.read_bufs(&mut buffers).unwrap_or_default();
                         if len > 0 {
                             if let Some(d) = tcp_conns.get(&c.dst_id) {
-                                println!("Send {} bytes from {} to {}", len, port, c.dst_id);
                                 let d_buffers: [&IoVec; 1] = [buf[..len].into()];
                                 d.src.write_bufs(&d_buffers).unwrap();
                             }
