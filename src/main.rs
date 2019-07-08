@@ -106,7 +106,7 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                         }
                     }
                     if let Some((port1, port2)) = to_remove {
-                        println!("Clossing TCP connections {} and {}", port1, port2);
+                        println!("Closing TCP connections {} and {}", port1, port2);
                         tcp_conns.remove(&port1);
                         tcp_conns.remove(&port2);
                     }
