@@ -50,9 +50,11 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
         poll.poll(&mut events, None)?;
 
         for event in events.iter() {
+            //println!("event {:?}", event);
             match event.token() {
                 TCP_SERVER => {
-                    let (stream1, _) = tcp_server.accept()?;
+                    let (stream1, from) = tcp_server.accept()?;
+                    println!("New TCP connection {:?}", from);
                     poll.register(&stream1, Token(next_token), Ready::readable(),
                                   PollOpt::level())?;
                     next_token += 1;
@@ -70,6 +72,7 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     if let Ok((len, from)) = udp_server.recv_from(&mut buf) {
                         if !udp_conns.contains_key_alt(&from) {
                             let addr = "0.0.0.0:0".parse().unwrap();
+                            println!("read {} bytes udp from {:?}", len, from);
                             let dst_sock = UdpSocket::bind(&addr)?;
 
                             poll.register(&dst_sock, Token(next_token), Ready::readable(),
@@ -91,15 +94,17 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                         let buffer_ref: &mut [u8] = &mut buf;
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
                         match c.src.read_bufs(&mut buffers) {
-                            Ok(0) => {}
+                            Ok(0) => {println!("read 0"); }
                             Ok(len) => {
+                                println!("read {} bytes tcp from {:?}", len, c.src.peer_addr().unwrap());
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
                                     let d_buffers: [&IoVec; 1] = [buf[..len].into()];
-                                    let _ = d.src.write_bufs(&d_buffers);
+                                    d.src.write_bufs(&d_buffers)?;
                                 }
                             }
                             Err(e) => {
                                 if e.kind() != io::ErrorKind::WouldBlock {
+                                    println!("TCP error {:?}", e);
                                     to_remove = Some((port, c.dst_id));
                                 }
                             }
@@ -112,7 +117,8 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     }
 
                     if let Some(c) = udp_conns.get(&port) {
-                        if let Ok((len, _)) = c.src.recv_from(&mut buf) {
+                        if let Ok((len, from)) = c.src.recv_from(&mut buf) {
+                            println!("read {} bytes udp from {:?}", len, from);
                             let _ = udp_server.send_to(&buf[..len], &c.addr);
                         }
                     }
@@ -142,8 +148,8 @@ fn main() -> Result<(), std::io::Error> {
         print_usage(&program, opts);
         return Ok(());
     }
-    let src_str = matches.opt_str("src").unwrap_or("0.0.0.0:1815".to_string());
-    let dst_str = matches.opt_str("dst").unwrap_or("127.0.0.1:2815".to_string());
+    let src_str = matches.opt_str("src").unwrap_or("0.0.0.0:815".to_string());
+    let dst_str = matches.opt_str("dst").unwrap_or("zm.tolao.de:815".to_string());
     let src = get_ipv4_socket_addr(&src_str)?;
     let dst = get_ipv4_socket_addr(&dst_str)?;
 
