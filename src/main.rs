@@ -86,20 +86,34 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     }
                 }
                 Token(port) => {
+                    let mut to_remove = None;
                     if let Some(c) = tcp_conns.get(&port) {
                         let buffer_ref: &mut [u8] = &mut buf;
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
-                        let len = c.src.read_bufs(&mut buffers).unwrap_or_default();
-                        if len > 0 {
-                            if let Some(d) = tcp_conns.get(&c.dst_id) {
-                                let d_buffers: [&IoVec; 1] = [buf[..len].into()];
-                                d.src.write_bufs(&d_buffers)?;
+                        match c.src.read_bufs(&mut buffers) {
+                            Ok(0) => {}
+                            Ok(len) => {
+                                if let Some(d) = tcp_conns.get(&c.dst_id) {
+                                    let d_buffers: [&IoVec; 1] = [buf[..len].into()];
+                                    let _ = d.src.write_bufs(&d_buffers);
+                                }
+                            }
+                            Err(e) => {
+                                if e.kind() != io::ErrorKind::WouldBlock {
+                                    to_remove = Some((port, c.dst_id));
+                                }
                             }
                         }
                     }
+                    if let Some((port1, port2)) = to_remove {
+                        println!("Clossing TCP connections {} and {}", port1, port2);
+                        tcp_conns.remove(&port1);
+                        tcp_conns.remove(&port2);
+                    }
+
                     if let Some(c) = udp_conns.get(&port) {
                         if let Ok((len, _)) = c.src.recv_from(&mut buf) {
-                            udp_server.send_to(&buf[..len], &c.addr)?;
+                            let _ = udp_server.send_to(&buf[..len], &c.addr);
                         }
                     }
                 },
