@@ -35,11 +35,11 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
 
     let tcp_server = TcpListener::bind(&src).unwrap();
     poll.register(&tcp_server, TCP_SERVER, Ready::readable(),
-                  PollOpt::edge())?;
+                  PollOpt::level())?;
 
     let udp_server = UdpSocket::bind(&src).unwrap();
     poll.register(&udp_server, UDP_SERVER, Ready::readable(),
-                  PollOpt::edge())?;
+                  PollOpt::level())?;
 
 
     // Create storage for events
@@ -54,11 +54,11 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                 TCP_SERVER => {
                     let (stream1, _) = tcp_server.accept()?;
                     poll.register(&stream1, Token(next_token), Ready::readable(),
-                                  PollOpt::edge())?;
+                                  PollOpt::level())?;
                     next_token += 1;
                     let stream2 = TcpStream::connect(&dst)?;
                     poll.register(&stream2, Token(next_token), Ready::readable(),
-                                  PollOpt::edge())?;
+                                  PollOpt::level())?;
                     next_token += 1;
 
                     let conn1 = TcpConnection{src: stream1, dst_id: next_token - 1};
