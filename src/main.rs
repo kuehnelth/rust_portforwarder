@@ -84,6 +84,7 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
 
                         if let Some(dst_conn) = udp_conns.get_alt(&from) {
                             let dst_sock = &dst_conn.src;
+                            println!("read {} bytes udp from {:?}", len, from);
                             dst_sock.send_to(&buf[..len], &dst)?;
                         }
                     }
@@ -94,7 +95,15 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                         let buffer_ref: &mut [u8] = &mut buf;
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
                         match c.src.read_bufs(&mut buffers) {
-                            Ok(0) => {println!("read 0"); }
+                            Ok(0) => {
+                                println!("read {} bytes tcp from {:?}", 0, c.src.peer_addr().unwrap());
+                                /*
+                                if let Some(d) = tcp_conns.get(&c.dst_id) {
+                                    let d_buffers: [&IoVec; 0] = [];
+                                    d.src.write_bufs(&d_buffers)?;
+                                }
+                                */
+                            }
                             Ok(len) => {
                                 println!("read {} bytes tcp from {:?}", len, c.src.peer_addr().unwrap());
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
@@ -117,9 +126,14 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     }
 
                     if let Some(c) = udp_conns.get(&port) {
-                        if let Ok((len, from)) = c.src.recv_from(&mut buf) {
-                            println!("read {} bytes udp from {:?}", len, from);
-                            let _ = udp_server.send_to(&buf[..len], &c.addr);
+                        match c.src.recv_from(&mut buf) {
+                            Ok((len, from)) => {
+                                println!("read {} bytes udp from {:?}", len, from);
+                                let _ = udp_server.send_to(&buf[..len], &c.addr);
+                            }
+                            Err(e) => {
+                                println!("{:?}", e);
+                            }
                         }
                     }
                 },
