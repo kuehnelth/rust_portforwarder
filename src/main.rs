@@ -9,6 +9,7 @@ use getopts::Options;
 struct TcpConnection {
     src: TcpStream,
     dst_id: usize,
+    writable: bool,
 }
 
 struct UdpConnection {
@@ -50,21 +51,25 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
         poll.poll(&mut events, None)?;
 
         for event in events.iter() {
-            //println!("event {:?}", event);
+            println!("event {:?}", event);
             match event.token() {
                 TCP_SERVER => {
+                    /* connect happens async so we have to wait for a writable
+                     * event to know that the connection is established.
+                     * after that we will switch to listening for readable
+                     */
                     let (stream1, from) = tcp_server.accept()?;
                     println!("New TCP connection {:?}", from);
-                    poll.register(&stream1, Token(next_token), Ready::readable(),
+                    poll.register(&stream1, Token(next_token), Ready::writable(),
                                   PollOpt::level())?;
                     next_token += 1;
                     let stream2 = TcpStream::connect(&dst)?;
-                    poll.register(&stream2, Token(next_token), Ready::readable(),
+                    poll.register(&stream2, Token(next_token), Ready::writable(),
                                   PollOpt::level())?;
                     next_token += 1;
 
-                    let conn1 = TcpConnection{src: stream1, dst_id: next_token - 1};
-                    let conn2 = TcpConnection{src: stream2, dst_id: next_token - 2};
+                    let conn1 = TcpConnection{src: stream1, dst_id: next_token - 1, writable: false};
+                    let conn2 = TcpConnection{src: stream2, dst_id: next_token - 2, writable: false};
                     tcp_conns.insert(next_token - 2, conn1);
                     tcp_conns.insert(next_token - 1, conn2);
                 }
@@ -90,8 +95,23 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     }
                 }
                 Token(port) => {
+                    if event.readiness().is_writable() {
+                        if let Some(c) = tcp_conns.get_mut(&port) {
+                            poll.reregister(&c.src, Token(port), Ready::readable(),
+                                            PollOpt::level())?;
+                            c.writable = true;
+                            continue;
+                        }
+
+                    }
                     let mut to_remove = None;
                     if let Some(c) = tcp_conns.get(&port) {
+                        if let Some(d) = tcp_conns.get(&c.dst_id) {
+                            if !d.writable {
+                                continue;
+                            }
+                        }
+
                         let buffer_ref: &mut [u8] = &mut buf;
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
                         match c.src.read_bufs(&mut buffers) {
@@ -132,7 +152,9 @@ fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                                 let _ = udp_server.send_to(&buf[..len], &c.addr);
                             }
                             Err(e) => {
-                                println!("{:?}", e);
+                                //if e.kind() != io::ErrorKind::WouldBlock {
+                                    println!("UDP error {:?}", e);
+                                //}
                             }
                         }
                     }
@@ -146,6 +168,7 @@ fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
     print!("{}", opts.usage(&brief));
 }
+
 fn main() -> Result<(), std::io::Error> {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
