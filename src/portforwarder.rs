@@ -5,6 +5,8 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::collections::HashMap;
 use multi_map::MultiMap;
 use log::{info, warn};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 struct TcpConnection {
     src: TcpStream,
@@ -25,7 +27,7 @@ pub fn get_ipv4_socket_addr(input :&String) -> Result<SocketAddr, io::Error> {
     Err(io::Error::new(io::ErrorKind::InvalidInput, "Can't resolve input to IPv4 socket address"))
 }
 
-pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
+pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> Result<(), io::Error> {
     const TCP_SERVER: Token = Token(0);
     const UDP_SERVER: Token = Token(1);
     let mut next_token = 2;
@@ -47,10 +49,24 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
     let mut events = Events::with_capacity(1024);
     let mut buf = [0; 8192];
 
+    let timeout;
+    if abort.is_some() {
+        timeout = Some(Duration::from_millis(100));
+    } else {
+        timeout = None;
+    }
+
     info!("Start forwarding from {} to {}", src, dst);
 
     loop {
-        poll.poll(&mut events, None)?;
+        poll.poll(&mut events, timeout)?;
+
+        if let Some(a) = abort {
+            if a.load(Ordering::Relaxed) {
+                info!("stopping portforwarder!");
+                break;
+            }
+        }
 
         for event in events.iter() {
             info!("event {:?}", event);
@@ -164,4 +180,6 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
             }
         }
     }
+
+    Ok(())
 }
