@@ -4,6 +4,7 @@ use mio::net::{TcpListener, TcpStream, UdpSocket};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::collections::HashMap;
 use multi_map::MultiMap;
+use log::{info, warn};
 
 struct TcpConnection {
     src: TcpStream,
@@ -46,11 +47,13 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
     let mut events = Events::with_capacity(1024);
     let mut buf = [0; 8192];
 
+    info!("Start forwarding from {} to {}", src, dst);
+
     loop {
         poll.poll(&mut events, None)?;
 
         for event in events.iter() {
-            println!("event {:?}", event);
+            info!("event {:?}", event);
             match event.token() {
                 TCP_SERVER => {
                     /* connect happens async so we have to wait for a writable
@@ -58,7 +61,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                      * after that we will switch to listening for readable
                      */
                     let (stream1, from) = tcp_server.accept()?;
-                    println!("New TCP connection {:?}", from);
+                    info!("New TCP connection {:?}", from);
                     poll.register(&stream1, Token(next_token), Ready::writable(),
                                   PollOpt::level())?;
                     next_token += 1;
@@ -76,7 +79,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     if let Ok((len, from)) = udp_server.recv_from(&mut buf) {
                         if !udp_conns.contains_key_alt(&from) {
                             let addr = "0.0.0.0:0".parse().unwrap();
-                            println!("read {} bytes udp from {:?}", len, from);
+                            info!("read {} bytes udp from {:?}", len, from);
                             let dst_sock = UdpSocket::bind(&addr)?;
 
                             poll.register(&dst_sock, Token(next_token), Ready::readable(),
@@ -88,7 +91,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
 
                         if let Some(dst_conn) = udp_conns.get_alt(&from) {
                             let dst_sock = &dst_conn.src;
-                            println!("read {} bytes udp from {:?}", len, from);
+                            info!("read {} bytes udp from {:?}", len, from);
                             dst_sock.send_to(&buf[..len], &dst)?;
                         }
                     }
@@ -115,7 +118,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
                         match c.src.read_bufs(&mut buffers) {
                             Ok(0) => {
-                                println!("read {} bytes tcp from {:?}", 0, c.src.peer_addr().unwrap());
+                                warn!("read {} bytes tcp from {:?}", 0, c.src.peer_addr().unwrap());
                                 /*
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
                                     let d_buffers: [&IoVec; 0] = [];
@@ -124,7 +127,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                                 */
                             }
                             Ok(len) => {
-                                println!("read {} bytes tcp from {:?}", len, c.src.peer_addr().unwrap());
+                                info!("read {} bytes tcp from {:?}", len, c.src.peer_addr().unwrap());
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
                                     let d_buffers: [&IoVec; 1] = [buf[..len].into()];
                                     d.src.write_bufs(&d_buffers)?;
@@ -132,14 +135,14 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                             }
                             Err(e) => {
                                 if e.kind() != io::ErrorKind::WouldBlock {
-                                    println!("TCP error {:?}", e);
+                                    warn!("TCP error {:?}", e);
                                     to_remove = Some((port, c.dst_id));
                                 }
                             }
                         }
                     }
                     if let Some((port1, port2)) = to_remove {
-                        println!("Closing TCP connections {} and {}", port1, port2);
+                        info!("Closing TCP connections {} and {}", port1, port2);
                         tcp_conns.remove(&port1);
                         tcp_conns.remove(&port2);
                     }
@@ -147,12 +150,12 @@ pub fn forward(src: SocketAddr, dst: SocketAddr) -> Result<(), io::Error> {
                     if let Some(c) = udp_conns.get(&port) {
                         match c.src.recv_from(&mut buf) {
                             Ok((len, from)) => {
-                                println!("read {} bytes udp from {:?}", len, from);
+                                info!("read {} bytes udp from {:?}", len, from);
                                 let _ = udp_server.send_to(&buf[..len], &c.addr);
                             }
                             Err(e) => {
                                 //if e.kind() != io::ErrorKind::WouldBlock {
-                                    println!("UDP error {:?}", e);
+                                    warn!("UDP error {:?}", e);
                                 //}
                             }
                         }

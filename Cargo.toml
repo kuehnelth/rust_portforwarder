@@ -8,6 +8,8 @@ edition = "2018"
 mio = "0.6"
 multi-map = "1.2.0"
 getopts= "0.2"
+log = "0.4"
+simple-logging = "2.0.2"
 
 [profile.release]
 opt-level = 3

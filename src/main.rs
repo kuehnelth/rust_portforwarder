@@ -1,6 +1,11 @@
 use std::*;
 use getopts::Options;
 
+use simple_logging;
+use log::LevelFilter;
+
+
+
 mod portforwarder;
 use portforwarder::{forward, get_ipv4_socket_addr};
 
@@ -25,6 +30,9 @@ fn main() -> Result<(), std::io::Error> {
         print_usage(&program, opts);
         return Ok(());
     }
+
+    simple_logging::log_to_stderr(LevelFilter::Info);
+
     let src_str = matches.opt_str("src").unwrap_or("0.0.0.0:815".to_string());
     let dst_str = matches.opt_str("dst").unwrap_or("zm.tolao.de:815".to_string());
     let src = get_ipv4_socket_addr(&src_str)?;
