@@ -7,6 +7,7 @@ use multi_map::MultiMap;
 use log::{info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use iovec::IoVec;
 
 struct TcpConnection {
     src: TcpStream,
@@ -34,15 +35,14 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
     let mut tcp_conns = HashMap::with_capacity(32);
     let mut udp_conns = MultiMap::with_capacity(32);
 
-    let poll = Poll::new()?;
+    let mut poll = Poll::new()?;
+    let registry = poll.registry().clone();
 
-    let tcp_server = TcpListener::bind(&src)?;
-    poll.register(&tcp_server, TCP_SERVER, Ready::readable(),
-                  PollOpt::level())?;
+    let tcp_server = TcpListener::bind(src)?;
+    registry.register(&tcp_server, TCP_SERVER, Interests::READABLE)?;
 
-    let udp_server = UdpSocket::bind(&src)?;
-    poll.register(&udp_server, UDP_SERVER, Ready::readable(),
-                  PollOpt::level())?;
+    let udp_server = UdpSocket::bind(src)?;
+    registry.register(&udp_server, UDP_SERVER, Interests::READABLE)?;
 
 
     // Create storage for events
@@ -78,12 +78,10 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                      */
                     let (stream1, from) = tcp_server.accept()?;
                     info!("New TCP connection {:?}", from);
-                    poll.register(&stream1, Token(next_token), Ready::writable(),
-                                  PollOpt::level())?;
+                    registry.register(&stream1, Token(next_token), Interests::WRITABLE)?;
                     next_token += 1;
-                    let stream2 = TcpStream::connect(&dst)?;
-                    poll.register(&stream2, Token(next_token), Ready::writable(),
-                                  PollOpt::level())?;
+                    let stream2 = TcpStream::connect(dst)?;
+                    registry.register(&stream2, Token(next_token), Interests::WRITABLE)?;
                     next_token += 1;
 
                     let conn1 = TcpConnection{src: stream1, dst_id: next_token - 1, writable: false};
@@ -96,10 +94,9 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                         if !udp_conns.contains_key_alt(&from) {
                             let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
                             info!("read {} bytes udp from {:?}", len, from);
-                            let dst_sock = UdpSocket::bind(&addr)?;
+                            let dst_sock = UdpSocket::bind(addr)?;
 
-                            poll.register(&dst_sock, Token(next_token), Ready::readable(),
-                                          PollOpt::level())?;
+                            registry.register(&dst_sock, Token(next_token), Interests::READABLE)?;
                             let conn = UdpConnection{src: dst_sock, addr: from};
                             udp_conns.insert(next_token, from, conn);
                             next_token += 1;
@@ -108,15 +105,14 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                         if let Some(dst_conn) = udp_conns.get_alt(&from) {
                             let dst_sock = &dst_conn.src;
                             info!("read {} bytes udp from {:?}", len, from);
-                            dst_sock.send_to(&buf[..len], &dst)?;
+                            dst_sock.send_to(&buf[..len], dst)?;
                         }
                     }
                 }
                 Token(port) => {
-                    if event.readiness().is_writable() {
+                    if event.is_writable() {
                         if let Some(c) = tcp_conns.get_mut(&port) {
-                            poll.reregister(&c.src, Token(port), Ready::readable(),
-                                            PollOpt::level())?;
+                            registry.reregister(&c.src, Token(port), Interests::READABLE)?;
                             c.writable = true;
                             continue;
                         }
@@ -167,7 +163,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                         match c.src.recv_from(&mut buf) {
                             Ok((len, from)) => {
                                 info!("read {} bytes udp from {:?}", len, from);
-                                let _ = udp_server.send_to(&buf[..len], &c.addr);
+                                let _ = udp_server.send_to(&buf[..len], c.addr);
                             }
                             Err(e) => {
                                 //if e.kind() != io::ErrorKind::WouldBlock {

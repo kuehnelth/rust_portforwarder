@@ -5,10 +5,11 @@ authors = ["Thomas Kühnel <kuehnelth@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-mio = "0.6"
+mio = { git = "https://github.com/tokio-rs/mio" }
 multi-map = "1.2.0"
 getopts= "0.2"
 simple-logging = "2.0.2"
+iovec = "0.1.2"
 
 [dependencies.log]
 version = "0.4"
