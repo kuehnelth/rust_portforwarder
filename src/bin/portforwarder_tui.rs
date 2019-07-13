@@ -36,7 +36,7 @@ fn main() {
     /* pancurses on windows opens it's own window.
      * So hide the standard windows console.
      */
-    #[cfg(all(windows, release))]
+    #[cfg(windows)]
     unsafe {
         use winapi::um::wincon::FreeConsole;
         FreeConsole();
