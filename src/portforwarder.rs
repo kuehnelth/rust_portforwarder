@@ -1,7 +1,7 @@
 use std::*;
 use mio::*;
 use mio::net::{TcpListener, TcpStream, UdpSocket};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::collections::HashMap;
 use multi_map::MultiMap;
 use log::{info, warn};
@@ -36,11 +36,11 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
 
     let poll = Poll::new()?;
 
-    let tcp_server = TcpListener::bind(&src).unwrap();
+    let tcp_server = TcpListener::bind(&src)?;
     poll.register(&tcp_server, TCP_SERVER, Ready::readable(),
                   PollOpt::level())?;
 
-    let udp_server = UdpSocket::bind(&src).unwrap();
+    let udp_server = UdpSocket::bind(&src)?;
     poll.register(&udp_server, UDP_SERVER, Ready::readable(),
                   PollOpt::level())?;
 
@@ -94,7 +94,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                 UDP_SERVER => {
                     if let Ok((len, from)) = udp_server.recv_from(&mut buf) {
                         if !udp_conns.contains_key_alt(&from) {
-                            let addr = "0.0.0.0:0".parse().unwrap();
+                            let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
                             info!("read {} bytes udp from {:?}", len, from);
                             let dst_sock = UdpSocket::bind(&addr)?;
 
@@ -134,7 +134,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                         let mut buffers: [&mut IoVec; 1] = [buffer_ref.into()];
                         match c.src.read_bufs(&mut buffers) {
                             Ok(0) => {
-                                warn!("read {} bytes tcp from {:?}", 0, c.src.peer_addr().unwrap());
+                                warn!("read {} bytes tcp from {:?}", 0, c.src.peer_addr()?);
                                 /*
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
                                     let d_buffers: [&IoVec; 0] = [];
@@ -143,7 +143,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                                 */
                             }
                             Ok(len) => {
-                                info!("read {} bytes tcp from {:?}", len, c.src.peer_addr().unwrap());
+                                info!("read {} bytes tcp from {:?}", len, c.src.peer_addr()?);
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
                                     let d_buffers: [&IoVec; 1] = [buf[..len].into()];
                                     d.src.write_bufs(&d_buffers)?;

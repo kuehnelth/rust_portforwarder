@@ -3,26 +3,35 @@ use cursive::views::*;
 use cursive::traits::*;
 
 use std::thread;
-
+use std::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+use log::{info, warn};
 
 #[path="../portforwarder.rs"]
 mod portforwarder;
 
-fn connect(siv: &mut Cursive) {
+fn connect(siv: &mut Cursive) -> Result<(), io::Error> {
     let src = siv.call_on_id("src", |view: &mut EditView| view.get_content()).unwrap();
     let dst = siv.call_on_id("dst", |view: &mut EditView| view.get_content()).unwrap();
 
-    let dst_addr = portforwarder::get_ipv4_socket_addr(&dst).unwrap();
-    let src_addr = portforwarder::get_ipv4_socket_addr(&src).unwrap();
+    let dst_addr = portforwarder::get_ipv4_socket_addr(&dst)?;
+    let src_addr = portforwarder::get_ipv4_socket_addr(&src)?;
 
     siv.set_fps(5);
     let abort = Arc::new(AtomicBool::new(false));
 
     let abort1 = Arc::clone(&abort);
     thread::spawn(move || {
-        portforwarder::forward(src_addr, dst_addr, Some(&abort1)).unwrap();
+        match portforwarder::forward(src_addr, dst_addr, Some(&abort1)) {
+            Err(e) => {
+                warn!("forwarder error {}", e);
+            }
+            Ok(()) => {
+                info!("forwarder exitited without error");
+            }
+        }
     });
 
     siv.add_layer(Dialog::around(LinearLayout::vertical()
@@ -30,6 +39,7 @@ fn connect(siv: &mut Cursive) {
                                  .scrollable()
                                  .scroll_x(true))
                   .button("Disconnect", move |s| { abort.store(true, Ordering::Relaxed); s.pop_layer(); } ));
+    Ok(())
 }
 
 fn main() {
@@ -52,7 +62,13 @@ fn main() {
                            .child("Connect to:", EditView::new().content("127.0.0.1:2815").with_id("dst").fixed_width(32))
                            .child("Listen on: ", EditView::new().content("127.0.0.1:1815").with_id("src").fixed_width(32))
                   )
-                  .button("Connect", |s| connect(s))
+                  .button("Connect", |s| { if let Err(e) = connect(s) {
+                      let content = format!("Error connecting: {}!", e);
+                      s.add_layer(
+                          Dialog::around(TextView::new(content))
+                              .button("Close", |s| {s.pop_layer().unwrap();}),
+                      );
+                  }})
                   .button("Quit", |s| s.quit()));
 
     // Starts the event loop.
