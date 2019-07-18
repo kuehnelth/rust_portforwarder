@@ -135,6 +135,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
                         match c.src.read_bufs(&mut buffers) {
                             Ok(0) => {
                                 warn!("read {} bytes tcp from {:?}", 0, c.src.peer_addr()?);
+                                to_remove = Some((port, c.dst_id));
                                 /*
                                 if let Some(d) = tcp_conns.get(&c.dst_id) {
                                     let d_buffers: [&IoVec; 0] = [];
