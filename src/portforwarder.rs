@@ -69,7 +69,7 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
         }
 
         for event in events.iter() {
-            info!("event {:?}", event);
+            //info!("event {:?}", event);
             match event.token() {
                 TCP_SERVER => {
                     /* connect happens async so we have to wait for a writable
