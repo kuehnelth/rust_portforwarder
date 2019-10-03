@@ -1,6 +1,9 @@
 use std::*;
 use std::io::{Read, Write};
+#[cfg(windows)]
 use wepoll_binding::{Epoll, EventFlag, Events};
+#[cfg(not(windows))]
+use fake_wepoll_binding::{Epoll, EventFlag, Events};
 use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::collections::HashMap;

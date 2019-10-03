@@ -20,6 +20,9 @@ features = ["wincon"]
 [target.'cfg(windows)'.dependencies]
 wepoll-binding = "^1.0"
 
+[target.'cfg(not(windows))'.dependencies]
+fake-wepoll-binding = { git = "https://github.com/kuehnelth/fake-wepoll-binding.git" }
+
 [dependencies.cursive]
 version = "0.13"
 default-features = false
