@@ -5,7 +5,6 @@ authors = ["Thomas Kühnel <kuehnelth@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-mio = "0.6"
 multi-map = "1.2.0"
 getopts= "0.2"
 simple-logging = "2.0.2"
@@ -15,11 +14,14 @@ version = "0.4"
 features = ["release_max_level_info"]
 
 [target.'cfg(windows)'.dependencies.winapi]
-version = "0.3.7"
+version = "0.3.8"
 features = ["wincon"]
 
+[target.'cfg(windows)'.dependencies]
+wepoll-binding = "^1.0"
+
 [dependencies.cursive]
-version = "0.12"
+version = "0.13"
 default-features = false
 features = ["pancurses-backend"]
 
