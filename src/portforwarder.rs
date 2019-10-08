@@ -26,7 +26,7 @@ struct UdpConnection {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Token(pub u64);
 
-pub fn get_ipv4_socket_addr(input :&String) -> Result<SocketAddr, io::Error> {
+pub fn get_ipv4_socket_addr(input :&str) -> Result<SocketAddr, io::Error> {
     let addrs_iter = input.to_socket_addrs()?;
     for addr in addrs_iter {
         if addr.is_ipv4() { return Ok(addr); }
@@ -54,12 +54,11 @@ pub fn forward(src: SocketAddr, dst: SocketAddr, abort: Option<&AtomicBool>) -> 
     let mut events = Events::with_capacity(1024);
     let mut buf = [0; 8192];
 
-    let timeout;
-    if abort.is_some() {
-        timeout = Some(Duration::from_millis(100));
-    } else {
-        timeout = None;
-    }
+	let timeout = if abort.is_some() {
+		Some(Duration::from_millis(100))
+	} else {
+		None
+	};
 
     info!("Start forwarding from {} to {}", src, dst);
 
