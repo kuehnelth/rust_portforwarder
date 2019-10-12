@@ -7,7 +7,7 @@ use std::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use dirs::data_dir;
+use dirs::config_dir;
 
 use log::{info, warn};
 
@@ -47,22 +47,26 @@ fn connect(siv: &mut Cursive) -> Result<(), io::Error> {
 fn save(siv: &mut Cursive) -> Result<(), io::Error> {
     let src = siv.call_on_id("src", |view: &mut EditView| view.get_content()).unwrap();
     let dst = siv.call_on_id("dst", |view: &mut EditView| view.get_content()).unwrap();
-    let configfile = data_dir().map(|p| p.join(r"portforwarder.config")).
-        ok_or(io::Error::new(io::ErrorKind::NotFound, "Configfile not found"))?;
+    let configfile = config_dir().map(|p| p.join(r"portforwarder.config")).
+		ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Configfile not found"))?;
 
     fs::write(configfile, format!("{},{}", src, dst))?;
 
     Ok(())
 }
 
-fn load() -> Result<String, io::Error> {
-    let configfile = data_dir().map(|p| p.join(r"portforwarder.config")).
-        ok_or(io::Error::new(io::ErrorKind::NotFound, "Configfile not found"))?;
+fn load() -> (String, String) {
+    let cfg = config_dir().map(|p| p.join(r"portforwarder.config"))
+        .and_then(|configfile| fs::read_to_string(configfile).ok())
+		.unwrap_or_else(|| "".to_string());
 
-    let contents = fs::read_to_string(configfile)
-        .unwrap_or("127.0.0.1:815,127.0.0.1:1815".to_string());
+	let mut split: Vec<&str> = cfg.splitn(2, ',').collect();
 
-    Ok(contents.to_string())
+	if split.len() != 2 {
+		split = ["127.0.0.1:815", "127.0.0.1:1815"].to_vec();
+	}
+
+	(split[0].trim().to_string(), split[1].trim().to_string())
 }
 
 fn main() {
@@ -79,13 +83,13 @@ fn main() {
     // Creates the cursive root - required for every application.
     let mut siv = Cursive::default();
 
-    let cfg: Vec<&str> = load().unwrap_or("127.0.0.1:815,127.0.0.1:1815".to_string()).splitn(2, ',').collect();
+    let (src, dst) = load();
 
     siv.add_layer(Dialog::new()
                   .title("Portforwarder")
                   .content(ListView::new()
-                           .child("Connect to:", EditView::new().content(cfg[1]).with_id("dst").fixed_width(32))
-                           .child("Listen on: ", EditView::new().content(cfg[0]).with_id("src").fixed_width(32))
+                           .child("Connect to:", EditView::new().content(dst).with_id("dst").fixed_width(32))
+                           .child("Listen on: ", EditView::new().content(src).with_id("src").fixed_width(32))
                   )
                   .button("Save", |s| { if let Err(e) = save(s) {
                       let content = format!("Error saving config: {}!", e);
